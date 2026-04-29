@@ -23,6 +23,8 @@ wss.on('connection', (ws) => {
         room.players.splice(idx, 1);
         if (room.players.length === 0) {
           rooms.delete(roomId);
+        } else {
+          broadcast(room, { type: 'peer_left' });
         }
       }
     });
@@ -56,18 +58,16 @@ function handleMessage(ws, data) {
       room.players.push(ws);
       ws.send(JSON.stringify({ type: 'joined', role: room.players.length - 1, roomId }));
       
+      // إذا اكتمل اللاعبان، نرسل إشارة للمضيف
       if (room.players.length === 2) {
-        // إرسال إشارة البدء للمضيف (role 0) لتوليد الأسئلة
         const hostWs = room.players[0];
-        hostWs.send(JSON.stringify({ type: 'start', turn: 0 }));
+        hostWs.send(JSON.stringify({ type: 'peer_joined' }));
       }
       break;
     }
     case 'state': {
-      // المضيف يرسل الأسئلة بعد خلطها
       if (room && ws === room.players[0]) {
         room.questions = data.questions;
-        // إرسال الأسئلة للضيف
         if (room.players[1]) {
           room.players[1].send(JSON.stringify({
             type: 'state',
