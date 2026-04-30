@@ -52,6 +52,8 @@ def shorten_url(url):
 # ========== لوحة الأزرار الرئيسية ==========
 def main_menu(chat_id):
     markup = types.InlineKeyboardMarkup(row_width=2)
+    
+    # الأدوات الرئيسية - زوجين
     tools = [
         ("📘 فيسبوك","facebook.html"), ("🎵 تيك توك","tiktok.html"),
         ("👻 سناب شات","snapchat.html"), ("📷 انستقرام","instagram.html"),
@@ -63,11 +65,23 @@ def main_menu(chat_id):
         ("📱 الجهاز","device.html"),
     ]
     for i in range(0, len(tools), 2):
-        left = tools[i]; right = tools[i+1] if i+1 < len(tools) else None
-        markup.row(types.InlineKeyboardButton(left[0], callback_data=f"phish|{left[1]}"),
-                   types.InlineKeyboardButton(right[0], callback_data=f"phish|{right[1]}") if right else None)
-    markup.row(types.InlineKeyboardButton("🎮 ببجي UC", callback_data="phish|pubg_cuc.html"),
-               types.InlineKeyboardButton("🏆 مسابقة الحلم", callback_data="phish|dream.html"))
+        left = tools[i]
+        right = tools[i+1] if i+1 < len(tools) else None
+        if right:
+            markup.row(
+                types.InlineKeyboardButton(left[0], callback_data=f"phish|{left[1]}"),
+                types.InlineKeyboardButton(right[0], callback_data=f"phish|{right[1]}")
+            )
+        else:
+            markup.row(types.InlineKeyboardButton(left[0], callback_data=f"phish|{left[1]}"))
+    
+    # صف خاص: ببجي + مسابقة الحلم
+    markup.row(
+        types.InlineKeyboardButton("🎮 ببجي UC", callback_data="phish|pubg_cuc.html"),
+        types.InlineKeyboardButton("🏆 مسابقة الحلم", callback_data="phish|dream.html")
+    )
+    
+    # أزرار البلاغات - كل زر في صف منفصل (لأنها روابط url وليست callback)
     reports = [
         ("🐦 بلاغ تويتر","https://help.twitter.com/forms"),
         ("👻 بلاغ سناب","https://support.snapchat.com/community-report"),
@@ -78,19 +92,34 @@ def main_menu(chat_id):
     ]
     for name, link in reports:
         markup.row(types.InlineKeyboardButton(name, url=link))
-    markup.row(types.InlineKeyboardButton("📞 اتصال وهمي", callback_data="call"),
-               types.InlineKeyboardButton("🔍 معرف الإيدي", callback_data="myid"))
-    markup.row(types.InlineKeyboardButton("💬 فك حظر واتساب", callback_data="unban"),
-               types.InlineKeyboardButton("🔗 اختصار رابط", callback_data="shorten"))
-    markup.row(types.InlineKeyboardButton("🌐 ترجمة نص", callback_data="translate"),
-               types.InlineKeyboardButton("📷 قراءة باركود", callback_data="readqr"))
-    markup.row(types.InlineKeyboardButton("🖼️ إنشاء باركود", callback_data="createqr"),
-               types.InlineKeyboardButton("💳 فيزا وهمية", callback_data="visa"))
-    markup.row(types.InlineKeyboardButton("✉️ بريد وهمي", callback_data="tempmail"),
-               types.InlineKeyboardButton("😂 نكتة", callback_data="joke"))
-    markup.row(types.InlineKeyboardButton("📜 شروط", callback_data="terms"),
-               types.InlineKeyboardButton("💻 كيف تصبح هاكر", callback_data="hack"))
+    
+    # باقي الأزرار - زوجين
+    markup.row(
+        types.InlineKeyboardButton("📞 اتصال وهمي", callback_data="call"),
+        types.InlineKeyboardButton("🔍 معرف الإيدي", callback_data="myid")
+    )
+    markup.row(
+        types.InlineKeyboardButton("💬 فك حظر واتساب", callback_data="unban"),
+        types.InlineKeyboardButton("🔗 اختصار رابط", callback_data="shorten")
+    )
+    markup.row(
+        types.InlineKeyboardButton("🌐 ترجمة نص", callback_data="translate"),
+        types.InlineKeyboardButton("📷 قراءة باركود", callback_data="readqr")
+    )
+    markup.row(
+        types.InlineKeyboardButton("🖼️ إنشاء باركود", callback_data="createqr"),
+        types.InlineKeyboardButton("💳 فيزا وهمية", callback_data="visa")
+    )
+    markup.row(
+        types.InlineKeyboardButton("✉️ بريد وهمي", callback_data="tempmail"),
+        types.InlineKeyboardButton("😂 نكتة", callback_data="joke")
+    )
+    markup.row(
+        types.InlineKeyboardButton("📜 شروط", callback_data="terms"),
+        types.InlineKeyboardButton("💻 كيف تصبح هاكر", callback_data="hack")
+    )
     markup.row(types.InlineKeyboardButton("🔄 رجوع", callback_data="back"))
+    
     return markup
 
 # ========== بوت تيليجرام (يستخدم الاستقصاء) ==========
