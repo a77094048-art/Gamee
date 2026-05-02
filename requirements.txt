@@ -6,5 +6,4 @@ qrcode[pil]
 Pillow
 pyshorteners
 deep-translator
-vapid
 pywebpush
